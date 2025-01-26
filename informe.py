@@ -5,20 +5,22 @@ import base64
 
 # Se emplea streamlit y plotly para generar las visualizaciones para el informe.
 
-# Cargar el dataset para el informe e imagen
+# Se carga el dataset para el informe e imagen. El dataset es un dataset limpio generado al final del proceso de limpieza y EDA anterior.
 df_informe = pd.read_csv("df_limpio.csv")
 
 with open("dvd.jpeg", "rb") as image_file:
     encoded_image = base64.b64encode(image_file.read()).decode()
 
-# Ordenar días de la semana y meses
+#PREPARATIVOS
+
+# Ordenar días de la semana y meses para los gráficos posteriores y creación de dataframe inicial df_informe
 dias_orden = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 meses_orden = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
 df_informe['Día Semana'] = pd.Categorical(df_informe['Día Semana'], categories=dias_orden, ordered=True)
 df_informe['Mes'] = pd.Categorical(df_informe['Mes'], categories=meses_orden, ordered=True)
 
-# Crear barra lateral para filtros
+#CREACIÓN DE BARRA LATERAL DE FILTROS POR LOCAL, AÑO Y NÚMERO DE SEMANA. ESTA BARRA LATERAL FILTRA PREVIAMENTE CUALQUEIR INFO POSTERIOR
+
 st.sidebar.header("Filtros")
 
 # Filtro por Local
@@ -36,11 +38,11 @@ if not ano_seleccionado:
     st.warning("⚠️  Por favor, debes seleccionar, al menos, uno de los años en los filtros (2019 y/o 2020). ¡Gracias!")
     st.stop()
 
-# Filtro por Semana (slider)
+# Filtro por Semana 
 semanas = sorted(df_informe[df_informe['Año'].isin(ano_seleccionado)]['Semana'].unique())
 min_semana, max_semana = min(semanas), max(semanas)
 
-# Slider para seleccionar rango de semanas
+# Usamos un Slider en lugar de un multiselect por volumen (Comodidad)
 rango_semanas = st.sidebar.slider(
     "Selecciona el rango de semanas:",
     min_value=min_semana,
@@ -55,7 +57,7 @@ df_filtrado = df_informe[
     (df_informe['Semana'] >= rango_semanas[0]) & (df_informe['Semana'] <= rango_semanas[1])
 ]
 
-# KPIs
+#EL INFORME COMO TAL
 st.title("💶 Facturación y Ventas")
 
 # Total sumado
@@ -70,8 +72,7 @@ st.metric(label="Número de Servicios:", value=numero_servicios)
 ticket_medio = total_suma / numero_servicios if numero_servicios > 0 else 0
 st.metric(label="Servicio Medio (€):", value=f"{ticket_medio:,.2f}")
 
-# Gráfico 1: Suma de la columna "Total"
-st.subheader("Facturación por Semana y Local")
+# Gráfico 1: "FACTURACIÓN TOTAL"
 grafico_total = px.bar(
     df_filtrado.groupby(['Semana', 'Local'])['Total'].sum().reset_index(),
     x='Semana', y='Total', color='Local',
@@ -98,7 +99,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Gráfico 2: Número de Servicios
+# Gráfico 2: SERVICIOS
 grafico_servicios = px.bar(
     df_filtrado.groupby(['Semana', 'Local'])['Servicio'].nunique().reset_index(),
     x='Semana', y='Servicio', color='Local',
@@ -127,6 +128,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+#################################TEMPORAL###########################
 # Detalle Temporal
 st.title("🕒 Detalle Temporal")
 
@@ -238,24 +240,26 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+###########PRODUCTOS#####################
+
 # Detalle de Productos
 st.title("🍜 Detalle de Productos")
 
-# Filtro por Familia (local al gráfico)
+# Filtro por Familia
 familias = df_informe['Familia'].unique()
 familia_seleccionada = st.multiselect(
     "Selecciona la Familia:", options=familias, default=["RICE BOWL", "NOODLES"]
 )
 
-# Filtrar el DataFrame por Familia seleccionada
+# Filtro el DataFrame por Familia seleccionada
 df_productos = df_filtrado[df_filtrado['Familia'].isin(familia_seleccionada)]
 
-# Agrupar por Producto y sumar Cantidad
+# Agrupo por Producto y sumo Cantidad
 df_productos_agrupado = df_productos.groupby(['Producto', 'Local']).agg(
     Cantidad=('Cantidad', 'sum')
 ).reset_index()
 
-# Limitar a los 20 productos más vendidos
+# Limito a los 20 productos más vendidos por temas de visualización
 df_top_productos = df_productos_agrupado.groupby('Producto')['Cantidad'].sum().nlargest(20).index
 df_productos_agrupado = df_productos_agrupado[df_productos_agrupado['Producto'].isin(df_top_productos)]
 
@@ -290,6 +294,9 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+#################DETALLES FINALES##################
+#Precio medio de uno o dos productos seleccionados. Por defecto los productos estrella...
+
 st.subheader("¿Cuánto cuesta un...?")
 
 # Filtro por Producto (máximo 2 seleccionados)
@@ -301,12 +308,12 @@ producto_seleccionado = st.multiselect(
     max_selections=2  # Solo permite seleccionar un máximo de 2
 )
 
-# Verificar que hay selección y evitar errores si está vacío
+# Manejo de errores
 if len(producto_seleccionado) == 0:
     st.warning("Por favor, selecciona al menos un producto.")
     st.stop()
 
-# Generar dinámicamente métricas para los productos seleccionados
+# Generación dinámica del precio medio
 for producto in producto_seleccionado:
     precio_medio = df_filtrado[df_filtrado['Producto'] == producto]['Precio Unitario'].mean()
     st.markdown(
@@ -339,6 +346,6 @@ st.markdown(
 )
 
 
-# Mostrar primeras filas del dataset filtrado
+# Primeras filas del dataset filtrado
 st.subheader("Resumen de los datos empleados")
 st.dataframe(df_filtrado.head())
